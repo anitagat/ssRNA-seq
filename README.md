@@ -1,5 +1,5 @@
-# Biomarker signatures of bulk-RNA seq and ssRNA-seq data
-Analysis of biomarker signatures of bulk RNA-seq and ssRNA-seq data.
+# Biomarker signatures
+Analysis of biomarker signatures (this code can be used for both bulk RNA-seq and ssRNA-seq data and for protein data).
 
 # Contents:
 ### Part 1 (code in file: biomarkersignatures.R)
