@@ -23,15 +23,17 @@
 setwd("~/data")
 
 # load data
+# in this example, protein data is used 
 em = read.table("EM.csv", header = TRUE, row.names = 1, sep = "\t")
 ss = read.table("SS.csv", header = TRUE, sep = "\t")
 
 
 # 1) get the names of the samples in each group
-# start by dividing continuous data into two factor levels
+# start by dividing continuous data into two factor levels. Here we divide by neutrophil count (high or low)
 neutro_count = cut(ss$NEUTROPHIL_COUNT, 2, labels = c("Low_Neutrophils","High_Neutrophils"))  #by indicating $SAMPLE, we specify what col of the df to subset
 ss$NEUTROPHIL_LEVEL = neutro_count
 
+# save sample names in each neutrophil category
 group_1 = subset(ss, NEUTROPHIL_COUNT == "Low_Neutrophils")$SAMPLE
 group_2 = subset(ss, NEUTROPHIL_COUNT == "High_Neutrophils")$SAMPLE
 
@@ -60,7 +62,7 @@ t_result$p.value
 wilcox.test(group_1_candidate, group_2_candidate, alternative = "two.sided")
 
 
-# tests in a LOOP: minimal code approach 
+# statistical tests in a LOOP: minimal code approach 
 #what genes do you want to test? 
 genes_to_test = c("PAPPA","KLK3","CCL21")
 
@@ -111,7 +113,7 @@ for(gene in genes_to_test){
 }
 
 
-# repeat test by subsetting a continuous variable
+# subset samples by dividing the continuous variable "age" into a high and a low age group
 age_discrete = cut(ss$AGE, 2, labels = c("low","high"))
 ss$AGE_GROUP = age_discrete
 
@@ -144,6 +146,7 @@ for(gene in genes_to_test){
 
 
 # Now perform tests btw high_eosinophils and low_eosinophils for ALL genes in the EM table using the same loop
+# first create a new differential expression (de) table
 de = data.frame(matrix(nrow=nrow(em), ncol=3))
 row.names(de) = row.names(em)
 names(de) = c("p", "p.adj", "log2fold")
@@ -359,7 +362,8 @@ summary(pca_coordinates[,2])
     return(results)
   }
 
-markers_PC1 = get_component_genes(1, em1)  
+# get marker genes associated to components 1, 2, 3
+markers_PC1 = get_component_genes(1, em)  
 markers_PC2 = get_component_genes(2, em)  
 markers_PC3 = get_component_genes(3, em)
 
@@ -369,8 +373,7 @@ markers_PC2$markers
 
 
 ## Part 4
-# Heatmaps
-# recommended HEATMAP code
+# Heatmap
 make_heatmap = function(em_table, gene_list) {
   # prepares the table
   hm.matrix = as.matrix(em_table[gene_list,])
@@ -398,7 +401,7 @@ order_em_PC1 = c(markers_PC1$q1_samples, markers_PC1$q3_samples)
 order_em_PC2 = c(markers_PC2$q1_samples, markers_PC2$q3_samples)
 order_em_PC3 = c(markers_PC3$q1_samples, markers_PC3$q3_samples)
 
-# slice em based on PCA-derived samples (different sample set for each component)
+# slice em based on PCA-derived samples from part 3 (different sample set for each component)
 em_sliced_PC1 = em[,order_em_PC1]
 em_sliced_PC2 = em[,order_em_PC2]
 em_sliced_PC3 = em[,order_em_PC3]
@@ -408,133 +411,8 @@ make_heatmap(em_sliced_PC1, markers_PC1$markers)
 make_heatmap(em_sliced_PC2, markers_PC2$markers)
 make_heatmap(em_sliced_PC3, markers_PC3$markers)
 
-# tidy up code: one-liner
+# tidy up code: plot heatmaps of marker signatures in one line
 make_heatmap(em[c(markers_PC1$q1_samples, markers_PC1$q3_samples)], markers_PC1$markers)
 make_heatmap(em[c(markers_PC2$q1_samples, markers_PC2$q3_samples)], markers_PC2$markers)
 make_heatmap(em[c(markers_PC3$q1_samples, markers_PC3$q3_samples)], markers_PC3$markers)
-
-# Part 5: Single Cell Omics 
-#new em with single cell samples
-em1 = read.table("EM.csv", header = TRUE, row.names = 1, sep="\t")
-
-#make PCA for comp 1&2 and 3&4
-make_pc1_pc2("", em1)
-make_pc3_pc4("", em1)
-
-#get marker genes for PC1, PC2 and PC3
-markers_PC1_em1 = get_component_genes(1, em1)  #### NOT WORKING
-markers_PC2_em1 = get_component_genes(2, em1)  
-markers_PC3_em1 = get_component_genes(3, em1)
-
-# Get component genes (manually)
-# scale data
-em1_scaled = na.omit(data.frame(t(scale(t(em1)))))
-
-# run PCA
-xx = prcomp(t(em1_scaled)) 
-pca_coordinates = data.frame(xx$x)
-# get the samples in the upper and lower quartile
-summary(pca_coordinates[,1])
-q1_PC1_em1 = summary(pca_coordinates[,1])[2] 
-q3_PC1_em1 = summary(pca_coordinates[,1])[5]
-q1_samples_em1 = row.names(subset(pca_coordinates, pca_coordinates[,1] < q1)) 
-q3_samples_em1 = row.names(subset(pca_coordinates, pca_coordinates[,1] > q3))
-# get the p and sig genes
-de_em1 = get_de(q1_samples_em1, q3_samples_em1, em1)
-markers_PC1_em1 = row.names(subset(de_em1, p.adj < 0.05 & abs(log2fold) > 1))
-
-# create vector containing only samples in q1 and q3 to order em
-ordered_em1 = c(q1_samples_em1, q3_samples_em1)
-#order em
-em1_sliced = em1[,ordered_em1] 
-
-# make heatmap using ordered dataset and markers list (PC1)
-make_heatmap(em1_sliced, markers_PC1_em1)
-
-# K-means clustering
-#repost get_de function 
-get_de = function(group_1,group_2, e_data){
-  # slice EM table using the vectors just created 
-  group_1_em = e_data[,group_1]
-  group_2_em = e_data[,group_2]
-  
-  #create new DE
-  de = data.frame(matrix(nrow=nrow(e_data), ncol=3))
-  row.names(de) = row.names(e_data)
-  names(de) = c("p", "p.adj", "log2fold")
-  
-  for (row_number in 1:nrow(e_data)) {
-    # gets the expression data for each group, for the current gene
-    group_1_candidate = as.numeric(group_1_em[row_number,]) 
-    group_2_candidate = as.numeric(group_2_em[row_number,])
-    # calculates P
-    w_result = wilcox.test(group_1_candidate, group_2_candidate, alternative = "two.sided")
-    # stores P
-    de[row_number,"p"] = w_result$p.value
-    #calculates p.adj
-    de[row_number,"p.adj"] = p.adjust(de[row_number,"p"], method = p.adjust.methods, n=3)
-    #calculates log2fold change
-    log2fold = log(mean(group_1_candidate),2)-log(mean(group_2_candidate),2)
-    #stores log2folds
-    de[row_number,"log2fold"] = log2fold
-  }
-  return(de)
-}
-
-# 1) Scale the data
-em1.s = na.omit(data.frame(t(scale(t(em1)))))
-# 2) transpose and perform k-means
-km = kmeans(t(em1.s), 3, iter.max = 10, nstart = 1) # 2 is the no. of clusters to find, 10 = no. iterations
-# 3) extract cluster information 
-clusters = as.factor(km$cluster)
-
-# use cluster info to colour PCA
-#make PCA for comp 1&2 and 3&4
-make_pc1_pc2(clusters, em1)
-make_pc3_pc4(clusters,em1)
-
-# discover the optimal number of clusters
-install.packages("factoextra")
-fviz_nbclust(t(em.s), kmeans, method = "wss")
-
-# clusters as a dataframe
-cluster_data = data.frame(km$cluster)
-View(cluster_data)
-# rename column
-names(cluster_data) = "km.cluster"
-
-# get the genes in each cluster 
-cluster_1 = row.names(subset(cluster_data, km.cluster == 1))
-cluster_2 = row.names(subset(cluster_data, km.cluster == 2))
-cluster_3 = row.names(subset(cluster_data, km.cluster == 3))
-
-# find the markers for these groups using the get_de function
-de1v2 = get_de(cluster_1, cluster_2, em1)
-de1v3 = get_de(cluster_1, cluster_3, em1)
-de2v3 = get_de(cluster_2, cluster_3, em1)
-View(de1v2)
-
-# get sig genes from each de table
-de1v2_sig = subset(de1v2, p.adj < 0.05 & abs(log2fold) > 1)
-de1v3_sig = subset(de1v3, p.adj < 0.05 & abs(log2fold) > 1)
-de2v3_sig = subset(de2v3, p.adj < 0.05 & abs(log2fold) > 1)
-
-# sort the sig de tables 
-de1v2_sig = de1v2_sig[order(de1v2_sig$p),] #order orders argument by ascending order
-de1v3_sig = de1v3_sig[order(de1v3_sig$p),]
-de2v3_sig = de2v3_sig[order(de2v3_sig$p),]
-
-# take top 25 genes from each list of sig genes
-de1v2_top25 = row.names(de1v2_sig[1:25,])
-de1v3_top25 = row.names(de1v3_sig[1:25,])
-de2v3_top25 = row.names(de2v3_sig[1:25,])
-
-# create list of sig genes (unique IDs)
-sig_genes = unique(c(de1v2_top25, de1v3_top25, de2v3_top25))
-
-# create vector for ordering clusters 
-ordered_clusters = c(cluster_1, cluster_2, cluster_3)
-
-# make ordered heatmap
-make_heatmap(em1[,c(cluster_1, cluster_2, cluster_3)], sig_genes)
 
